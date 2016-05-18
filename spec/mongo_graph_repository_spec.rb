@@ -2,13 +2,13 @@ $:.unshift "."
 require 'spec_helper'
 
 require 'rdf/spec/repository'
-require 'rdf/mongo'
+require 'rdf/mongo/graph_repository'
 
-describe RDF::Mongo::Repository do
+describe RDF::Mongo::GraphRepository do
   before :all do
     logger = RDF::Spec.logger
     logger.level = Logger::FATAL
-    @load_durable = lambda {RDF::Mongo::Repository.new uri: "mongodb://localhost:27017/rdf-mongo/specs", logger: logger}
+    @load_durable = lambda {RDF::Mongo::GraphRepository.new uri: "mongodb://localhost:27017/rdf-mongo/specs", logger: logger}
     @repository = @load_durable.call
   end
   before :each do

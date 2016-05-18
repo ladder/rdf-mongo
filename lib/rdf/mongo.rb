@@ -8,11 +8,11 @@ module RDF
     # Creates a BSON representation of the statement.
     # @return [Hash]
     def to_mongo
-      self.to_hash.inject({}) do |hash, (place_in_statement, entity)| 
-        hash.merge(RDF::Mongo::Conversion.to_mongo(entity, place_in_statement)) 
+      self.to_hash.inject({}) do |hash, (place_in_statement, entity)|
+        hash.merge(RDF::Mongo::Conversion.to_mongo(entity, place_in_statement))
       end
     end
-    
+
     ##
     # Create BSON for a statement representation. Note that if the statement has no graph name,
     # a value of `false` will be used to indicate the default context
@@ -27,7 +27,7 @@ module RDF
         graph_name: RDF::Mongo::Conversion.from_mongo(statement['c'], statement['ct'], statement['cl']))
     end
   end
-  
+
   module Mongo
     autoload :VERSION, "rdf/mongo/version"
 
@@ -68,7 +68,7 @@ module RDF
           v, k = value.to_s, :u
         end
         v = nil if v == ''
-        
+
         case place_in_statement
         when :subject
           t, k1, lt = :st, :s, :sl
@@ -114,7 +114,7 @@ module RDF
       # The collection used for storing quads
       # @return [Mongo::Collection]
       attr_reader :collection
-      
+
       ##
       # Initializes this repository instance.
       #
@@ -156,7 +156,7 @@ module RDF
         end
 
         @collection = @client[options.delete(:collection) || 'quads']
-        @collection.indexes.create_many([
+        indexes = options.delete(:indexes) || [
           {key: {s: 1}},
           {key: {p: 1}},
           {key: {o: "hashed"}},
@@ -164,7 +164,8 @@ module RDF
           {key: {s: 1, p: 1}},
           #{key: {s: 1, o: "hashed"}}, # Muti-key hashed indexes not allowed
           #{key: {p: 1, o: "hashed"}}, # Muti-key hashed indexes not allowed
-        ])
+        ]
+        @collection.indexes.create_many(indexes)
         super(options, &block)
       end
 
@@ -176,7 +177,7 @@ module RDF
           else false
         end
       end
-      
+
       def insert_statement(statement)
         raise ArgumentError, "Statement #{statement.inspect} is incomplete" if statement.incomplete?
         st_mongo = statement.to_mongo
@@ -226,7 +227,6 @@ module RDF
       # @private
       # @see RDF::Enumerable#each_statement
       def each_statement(&block)
-        @nodes = {} # reset cache. FIXME this should probably be in Node.intern
         if block_given?
           @collection.find().each do |document|
             block.call(RDF::Statement.from_mongo(document))
@@ -251,7 +251,6 @@ module RDF
       # @see RDF::Query::Pattern
       def query_pattern(pattern, options = {}, &block)
         return enum_for(:query_pattern, pattern, options) unless block_given?
-        @nodes = {} # reset cache. FIXME this should probably be in Node.intern
 
         # A pattern graph_name of `false` is used to indicate the default graph
         pm = pattern.to_mongo
@@ -261,7 +260,7 @@ module RDF
           block.call(RDF::Statement.from_mongo(document))
         end
       end
-    
+
       private
 
         def enumerator! # @private
