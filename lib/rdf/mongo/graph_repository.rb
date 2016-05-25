@@ -78,13 +78,9 @@ module RDF
       # @see RDF::Mutable#delete_statement
       def delete_statement(statement)
         split = RDF::Mongo::Conversion.split_mongo(statement.to_mongo)
+        split[:context][:ct] ||= :default # Indicate statement is in the default graph
 
-        case statement.graph_name
-        when nil
-          @collection.find_one_and_update(split[:context].merge(ct: :default), { "$pullAll" => { statements: [split[:triple]]} })
-        else
-          @collection.find_one_and_update(split[:context], { "$pullAll" => { statements: [split[:triple]]} })
-        end
+        @collection.find_one_and_update(split[:context], { "$pullAll" => { statements: [split[:triple]]} })
       end
 
       def count
@@ -112,8 +108,8 @@ module RDF
         if block_given?
           # TODO: investigate parallel scan
           @collection.find().each do |document|
+            context = {'c'  => document[:c], 'ct' => document[:ct], 'cl' => document[:cl]}
             document[:statements].each do |statement|
-              context = {'c'  => document[:c], 'ct' => document[:ct], 'cl' => document[:cl]}
               block.call(RDF::Statement.from_mongo(context.merge(statement)))
             end
           end

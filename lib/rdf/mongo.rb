@@ -140,7 +140,7 @@ module RDF
         collection = nil
         if options[:uri]
           options = options.dup
-          uri = RDF::URI(options.delete(:uri))
+          uri = RDF::URI(options[:uri])
           _, db, coll = uri.path.split('/')
           collection = coll || options.delete(:collection)
           db ||= "quadb"
@@ -223,11 +223,13 @@ module RDF
       def has_statement?(statement)
         @collection.find(statement.to_mongo).count > 0
       end
+
       ##
       # @private
       # @see RDF::Enumerable#each_statement
       def each_statement(&block)
         if block_given?
+          # TODO: investigate parallel scan
           @collection.find().each do |document|
             block.call(RDF::Statement.from_mongo(document))
           end
