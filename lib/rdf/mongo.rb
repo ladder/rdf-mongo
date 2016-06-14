@@ -189,7 +189,9 @@ module RDF
           ops << { update_one: { filter: statement_to_insert(i), update: statement_to_insert(i), upsert: true} }
         end
 
-        @collection.bulk_write(ops, ordered: true)
+        # Only used an ordered write if we have both deletes and inserts
+        ordered = ! (changeset.inserts.empty? or changeset.deletes.empty?)
+        @collection.bulk_write(ops, ordered: ordered)
       end
 
       def insert_statement(statement)
