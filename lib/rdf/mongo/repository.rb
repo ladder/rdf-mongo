@@ -50,7 +50,7 @@ module RDF
         end
 
         @collection = @client[options.delete(:collection) || 'quads']
-        @collection.indexes.create_many([ # FIXME: refactor schema out using DI
+        @collection.indexes.create_many([ # FIXME: refactor schema out
           {key: {statement: 1}},
           {key: {predicate: 1}},
           {key: {object: "hashed"}},
@@ -126,7 +126,7 @@ module RDF
       # @private
       # @see RDF::Enumerable#has_statement?
       def has_statement?(statement)
-        @collection.find(RDF::Mongo::Conversion.statement_to_mongo(statement)).count > 0
+        @collection.find(statement_to_mongo(statement)).count > 0
       end
       ##
       # @private

@@ -9,65 +9,45 @@ module RDF
       #   URI, BNode or Literal. May also be a Variable or Symbol to indicate
       #   a pattern for a named graph, or `false` to indicate the default graph.
       #   A value of `nil` indicates a pattern that matches any value.
-      # @param [:subject, :predicate, :object, :graph_name] place_in_statement
+      # @param [:subject, :predicate, :object, :graph_name] position
       #   Position within statement.
       # @return [Hash] BSON representation of the statement
-      def self.entity_to_mongo(entity, place_in_statement)
-        case place_in_statement
-        when :subject
-          value_type, literal_extra = :s_type, :s_literal
-        when :predicate
-          value_type, literal_extra = :p_type, :p_literal
-        when :object
-          value_type, literal_extra = :o_type, :o_literal
-        when :graph_name
-          value_type, literal_extra = :c_type, :c_literal
-        end
+      def self.entity_to_mongo(entity, position)
+        value_type = "#{position.to_s.chr}_type".to_sym
 
-        h = case entity
+        case entity
         when RDF::URI
-          { place_in_statement => entity.to_s, value_type => :uri }
+          { position => entity.to_s, value_type => :uri }
         when RDF::Node
-          { place_in_statement => entity.id.to_s, value_type => :node }
+          { position => entity.id.to_s, value_type => :node }
         when RDF::Literal
           if entity.has_language?
-            { place_in_statement => entity.value, value_type => :literal_lang, literal_extra => entity.language.to_s }
+            literal_extra = "#{position.to_s.chr}_literal".to_sym
+            { position => entity.value, value_type => :literal_lang, literal_extra => entity.language.to_s }
           elsif entity.has_datatype?
-            { place_in_statement => entity.value, value_type => :literal_type, literal_extra => entity.datatype.to_s }
+            literal_extra = "#{position.to_s.chr}_literal".to_sym
+            { position => entity.value, value_type => :literal_type, literal_extra => entity.datatype.to_s }
           else
-            { place_in_statement => entity.value, value_type => :literal }
+            { position => entity.value, value_type => :literal }
           end
         else
           {}
         end
-
-        h.select { |_, value| !value.nil? }
       end
 
-      def self.p_to_mongo(pattern, place_in_statement)
-        case place_in_statement
-        when :subject
-          value_type, literal_extra = :s_type, :s_literal
-        when :predicate
-          value_type, literal_extra = :p_type, :p_literal
-        when :object
-          value_type, literal_extra = :o_type, :o_literal
-        when :graph_name
-          value_type, literal_extra = :c_type, :c_literal
-        end
+      def self.p_to_mongo(pattern, position)
+        value_type = "#{position.to_s.chr}_type".to_sym
 
-        h = case pattern
+        case pattern
         when RDF::Query::Variable, Symbol
           # Returns anything other than the default context
-          { place_in_statement => nil, value_type => {"$ne" => :default} }
+          { value_type => {"$ne" => :default} }
         when false
           # Used for the default context
-          { place_in_statement => false, value_type => :default}
+          { position => false, value_type => :default}
         else
-          return self.entity_to_mongo(pattern, place_in_statement)
+          return self.entity_to_mongo(pattern, position)
         end
-
-        h.select { |_, value| !value.nil? }
       end
 
       ##
@@ -98,30 +78,30 @@ module RDF
       #
       # @param [RDF::Statement] statement
       # @return [Hash] Generated BSON representation of statement.
-      def self.statement_from_mongo(statement)
+      def self.statement_from_mongo(document)
         RDF::Statement.new(
-          subject:    RDF::Mongo::Conversion.from_mongo(statement['subject'],   statement['s_type'], statement['s_literal']),
-          predicate:  RDF::Mongo::Conversion.from_mongo(statement['predicate'], statement['p_type'], statement['p_literal']),
-          object:     RDF::Mongo::Conversion.from_mongo(statement['object'],    statement['o_type'], statement['o_literal']),
-          graph_name: RDF::Mongo::Conversion.from_mongo(statement['graph_name'],   statement['c_type'], statement['c_literal']))
+          subject:    RDF::Mongo::Conversion.from_mongo(document['subject'],    document['s_type'], document['s_literal']),
+          predicate:  RDF::Mongo::Conversion.from_mongo(document['predicate'],  document['p_type'], document['p_literal']),
+          object:     RDF::Mongo::Conversion.from_mongo(document['object'],     document['o_type'], document['o_literal']),
+          graph_name: RDF::Mongo::Conversion.from_mongo(document['graph_name'], document['g_type'], document['c_literal']))
       end
 
       ##
       # Creates a BSON representation of the statement.
       # @return [Hash]
       def self.statement_to_mongo(statement)
-        h = statement.to_hash.inject({}) do |hash, (place_in_statement, entity)|
-          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(entity, place_in_statement))
+        h = statement.to_hash.inject({}) do |hash, (position, entity)|
+          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(entity, position))
         end
-        h[:c_type] ||= :default # Indicate statement is in the default graph
+        h[:g_type] ||= :default # Indicate statement is in the default graph
         h
       end
 
       def self.pattern_to_mongo(pattern)
-        h = pattern.to_hash.inject({}) do |hash, (place_in_statement, entity)|
-          hash.merge(RDF::Mongo::Conversion.p_to_mongo(entity, place_in_statement))
+        h = pattern.to_hash.inject({}) do |hash, (position, entity)|
+          hash.merge(RDF::Mongo::Conversion.p_to_mongo(entity, position))
         end
-        h.merge!(graph_name: nil, c_type: :default) if pattern.graph_name == false # TODO: refactor this into #pattern_to_mongo
+        h.merge!(graph_name: nil, g_type: :default) if pattern.graph_name == false
         h
       end
     end
