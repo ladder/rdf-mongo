@@ -65,13 +65,12 @@ module RDF
         case type
         when :uri
           RDF::URI.intern(value)
+        when :node
+          RDF::Node.intern(value)
         when :lang
           RDF::Literal.new(value, language: extra.to_sym)
         when :type
           RDF::Literal.new(value, datatype: RDF::URI.intern(extra))
-        when :node
-          @nodes ||= {}
-          @nodes[value] ||= RDF::Node.new(value)
         when :default
           nil # The default context returns as nil, although it's queried as false.
         else

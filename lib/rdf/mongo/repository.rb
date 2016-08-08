@@ -50,7 +50,7 @@ module RDF
         end
 
         @collection = @client[options.delete(:collection) || 'quads']
-        @collection.indexes.create_many([ # FIXME: refactor schema out
+        @collection.indexes.create_many([
           {key: {s: "hashed"}},
           {key: {p: "hashed"}},
           {key: {o: "hashed"}},
@@ -132,7 +132,6 @@ module RDF
       # @private
       # @see RDF::Enumerable#each_statement
       def each_statement(&block)
-        @nodes = {} # reset cache. FIXME this should probably be in Node.intern
         if block_given?
           @collection.find().each do |document|
             block.call(RDF::Mongo::Conversion.statement_from_mongo(document))
@@ -157,7 +156,6 @@ module RDF
       # @see RDF::Query::Pattern
       def query_pattern(pattern, options = {}, &block)
         return enum_for(:query_pattern, pattern, options) unless block_given?
-        @nodes = {} # reset cache. FIXME this should probably be in Node.intern
 
         # A pattern graph_name of `false` is used to indicate the default graph
         pm = RDF::Mongo::Conversion.pattern_to_mongo(pattern)
