@@ -14,7 +14,7 @@ describe RDF::Mongo::Repository do
   before :each do
     @repository.collection.drop
   end
- 
+
   after :each do
     @repository.collection.drop
   end

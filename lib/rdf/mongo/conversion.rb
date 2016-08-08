@@ -5,48 +5,55 @@ module RDF
       ##
       # Translate an RDF::Value type to BSON key/value pairs.
       #
-      # @param [RDF::Value, Symbol, false, nil] value
-      #   URI, BNode or Literal. May also be a Variable or Symbol to indicate
-      #   a pattern for a named graph, or `false` to indicate the default graph.
-      #   A value of `nil` indicates a pattern that matches any value.
       # @param [:subject, :predicate, :object, :graph_name] position
       #   Position within statement.
+      # @param [RDF::Value, Symbol] entity
+      #   URI, BNode or Literal.
       # @return [Hash] BSON representation of the statement
-      def self.entity_to_mongo(entity, position)
-        value_type = "#{position.to_s.chr}_type".to_sym
+      def self.entity_to_mongo(position, entity)
+        pos = position.to_s.chr
+        type = "#{pos}t".to_sym
 
         case entity
         when RDF::URI
-          { position => entity.to_s, value_type => :uri }
+          { pos => entity.to_s, type => :uri }
         when RDF::Node
-          { position => entity.id.to_s, value_type => :node }
+          { pos => entity.id.to_s, type => :node }
         when RDF::Literal
           if entity.has_language?
-            literal_extra = "#{position.to_s.chr}_literal".to_sym
-            { position => entity.value, value_type => :literal_lang, literal_extra => entity.language.to_s }
+            extra = "#{pos}l".to_sym
+            { pos => entity.value, type => :lang, extra => entity.language.to_s }
           elsif entity.has_datatype?
-            literal_extra = "#{position.to_s.chr}_literal".to_sym
-            { position => entity.value, value_type => :literal_type, literal_extra => entity.datatype.to_s }
+            extra = "#{pos}l".to_sym
+            { pos => entity.value, type => :type, extra => entity.datatype.to_s }
           else
-            { position => entity.value, value_type => :literal }
+            { pos => entity.value, type => :literal }
           end
         else
           {}
         end
       end
 
-      def self.p_to_mongo(pattern, position)
-        value_type = "#{position.to_s.chr}_type".to_sym
+      # @param [:subject, :predicate, :object, :graph_name] position
+      #   Position within statement.
+      # @param [RDF::Value, Symbol, false, nil] entity
+      #   Variable or Symbol to indicate a pattern for a named graph,
+      #   or `false` to indicate the default graph.
+      #   A value of `nil` indicates a pattern that matches any value.
+      # @return [Hash] BSON representation of the query pattern
+      def self.p_to_mongo(position, pattern)
+        pos = position.to_s.chr
+        type = "#{pos}t".to_sym
 
         case pattern
         when RDF::Query::Variable, Symbol
           # Returns anything other than the default context
-          { value_type => {"$ne" => :default} }
+          { type => {"$ne" => :default} }
         when false
           # Used for the default context
-          { position => false, value_type => :default}
+          { pos => false, type => :default}
         else
-          return self.entity_to_mongo(pattern, position)
+          return self.entity_to_mongo(position, pattern)
         end
       end
 
@@ -54,14 +61,14 @@ module RDF
       # Translate an BSON positional reference to an RDF Value.
       #
       # @return [RDF::Value]
-      def self.from_mongo(value, type = :uri, literal_extra = nil)
+      def self.from_mongo(value, type = :uri, extra = nil)
         case type
         when :uri
           RDF::URI.intern(value)
-        when :literal_lang
-          RDF::Literal.new(value, language: literal_extra.to_sym)
-        when :literal_type
-          RDF::Literal.new(value, datatype: RDF::URI.intern(literal_extra))
+        when :lang
+          RDF::Literal.new(value, language: extra.to_sym)
+        when :type
+          RDF::Literal.new(value, datatype: RDF::URI.intern(extra))
         when :literal
           RDF::Literal.new(value)
         when :node
@@ -80,10 +87,10 @@ module RDF
       # @return [Hash] Generated BSON representation of statement.
       def self.statement_from_mongo(document)
         RDF::Statement.new(
-          subject:    RDF::Mongo::Conversion.from_mongo(document['subject'],    document['s_type'], document['s_literal']),
-          predicate:  RDF::Mongo::Conversion.from_mongo(document['predicate'],  document['p_type'], document['p_literal']),
-          object:     RDF::Mongo::Conversion.from_mongo(document['object'],     document['o_type'], document['o_literal']),
-          graph_name: RDF::Mongo::Conversion.from_mongo(document['graph_name'], document['g_type'], document['c_literal']))
+          subject:    RDF::Mongo::Conversion.from_mongo(document['s'], document['st'], document['sl']),
+          predicate:  RDF::Mongo::Conversion.from_mongo(document['p'], document['pt'], document['pl']),
+          object:     RDF::Mongo::Conversion.from_mongo(document['o'], document['ot'], document['ol']),
+          graph_name: RDF::Mongo::Conversion.from_mongo(document['g'], document['gt'], document['gl']))
       end
 
       ##
@@ -91,17 +98,17 @@ module RDF
       # @return [Hash]
       def self.statement_to_mongo(statement)
         h = statement.to_hash.inject({}) do |hash, (position, entity)|
-          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(entity, position))
+          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(position, entity))
         end
-        h[:g_type] ||= :default # Indicate statement is in the default graph
+        h[:gt] ||= :default # Indicate statement is in the default graph
         h
       end
 
       def self.pattern_to_mongo(pattern)
         h = pattern.to_hash.inject({}) do |hash, (position, entity)|
-          hash.merge(RDF::Mongo::Conversion.p_to_mongo(entity, position))
+          hash.merge(RDF::Mongo::Conversion.p_to_mongo(position, entity))
         end
-        h.merge!(graph_name: nil, g_type: :default) if pattern.graph_name == false
+        h.merge!(g: nil, gt: :default) if pattern.graph_name == false
         h
       end
     end
