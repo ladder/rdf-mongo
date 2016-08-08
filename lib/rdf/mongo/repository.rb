@@ -54,7 +54,7 @@ module RDF
           {key: {statement: 1}},
           {key: {predicate: 1}},
           {key: {object: "hashed"}},
-          {key: {context: 1}},
+          {key: {graph_name: 1}},
           {key: {statement: 1, predicate: 1}},
           #{key: {s: 1, o: "hashed"}}, # Muti-key hashed indexes not allowed
           #{key: {p: 1, o: "hashed"}}, # Muti-key hashed indexes not allowed
@@ -76,11 +76,13 @@ module RDF
         ops = []
 
         changeset.deletes.each do |d|
-          ops << { delete_one: { filter: statement_to_delete(d)} }
+          st_mongo = statement_to_mongo(d)
+          ops << { delete_one: { filter: st_mongo } }
         end
 
         changeset.inserts.each do |i|
-          ops << { update_one: { filter: statement_to_insert(i), update: statement_to_insert(i), upsert: true} }
+          st_mongo = statement_to_mongo(i)
+          ops << { update_one: { filter: st_mongo, update: st_mongo, upsert: true } }
         end
 
         # Only use an ordered write if we have both deletes and inserts
@@ -89,13 +91,13 @@ module RDF
       end
 
       def insert_statement(statement)
-        st_mongo = statement_to_insert(statement)
+        st_mongo = statement_to_mongo(statement)
         @collection.update_one(st_mongo, st_mongo, upsert: true)
       end
 
       # @see RDF::Mutable#delete_statement
       def delete_statement(statement)
-        st_mongo = statement_to_delete(statement)
+        st_mongo = statement_to_mongo(statement)
         @collection.delete_one(st_mongo)
       end
 
@@ -159,7 +161,6 @@ module RDF
 
         # A pattern graph_name of `false` is used to indicate the default graph
         pm = RDF::Mongo::Conversion.pattern_to_mongo(pattern)
-        pm.merge!(context: nil, c_type: :default) if pattern.graph_name == false # TODO: refactor this into #pattern_to_mongo
 
         @collection.find(pm).each do |document|
           block.call(RDF::Mongo::Conversion.statement_from_mongo(document))
@@ -173,17 +174,9 @@ module RDF
           @@enumerator_klass = defined?(::Enumerable::Enumerator) ? ::Enumerable::Enumerator : ::Enumerator
         end
 
-        def statement_to_insert(statement)
+        def statement_to_mongo(statement)
           raise ArgumentError, "Statement #{statement.inspect} is incomplete" if statement.incomplete?
-          st_mongo = RDF::Mongo::Conversion.statement_to_mongo(statement)
-          st_mongo[:c_type] ||= :default # Indicate statement is in the default graph; TODO: refactor this into #statement_to_mongo
-          st_mongo
-        end
-
-        def statement_to_delete(statement)
-          st_mongo = RDF::Mongo::Conversion.statement_to_mongo(statement)
-          st_mongo[:c_type] = :default if statement.graph_name.nil? # TODO: refactor this into #statement_to_mongo
-          st_mongo
+          RDF::Mongo::Conversion.statement_to_mongo(statement)
         end
     end
   end

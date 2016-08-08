@@ -15,68 +15,58 @@ module RDF
       def self.entity_to_mongo(entity, place_in_statement)
         case place_in_statement
         when :subject
-          value_type, position, literal_extra = :s_type, :subject, :s_literal
+          value_type, literal_extra = :s_type, :s_literal
         when :predicate
-          value_type, position, literal_extra = :p_type, :predicate, :p_literal
+          value_type, literal_extra = :p_type, :p_literal
         when :object
-          value_type, position, literal_extra = :o_type, :object, :o_literal
+          value_type, literal_extra = :o_type, :o_literal
         when :graph_name
-          value_type, position, literal_extra = :c_type, :context, :c_literal
+          value_type, literal_extra = :c_type, :c_literal
         end
 
-        case entity
+        h = case entity
         when RDF::URI
-          pos, type = entity.to_s, :uri
+          { place_in_statement => entity.to_s, value_type => :uri }
         when RDF::Node
-          pos, type = entity.id.to_s, :node
+          { place_in_statement => entity.id.to_s, value_type => :node }
         when RDF::Literal
           if entity.has_language?
-            pos, type, ll = entity.value, :literal_lang, entity.language.to_s
+            { place_in_statement => entity.value, value_type => :literal_lang, literal_extra => entity.language.to_s }
           elsif entity.has_datatype?
-            pos, type, ll = entity.value, :literal_type, entity.datatype.to_s
+            { place_in_statement => entity.value, value_type => :literal_type, literal_extra => entity.datatype.to_s }
           else
-            pos, type, ll = entity.value, :literal, nil
+            { place_in_statement => entity.value, value_type => :literal }
           end
+        else
+          {}
         end
-=begin
-        when nil # FIXME: shouldn't return anything
-          pos, type = nil, nil
-        else # FIXME: we should never get here
-          pos, type = entity.to_s, :uri
-        end
-        pos = nil if pos == ''
-        # =====
-=end
 
-        h = { position => pos, value_type => type, literal_extra => ll }
-        h.delete_if {|kk,_| h[kk].nil?}
+        h.select { |_, value| !value.nil? }
       end
 
       def self.p_to_mongo(pattern, place_in_statement)
         case place_in_statement
         when :subject
-          value_type, position, literal_extra = :s_type, :subject, :s_literal
+          value_type, literal_extra = :s_type, :s_literal
         when :predicate
-          value_type, position, literal_extra = :p_type, :predicate, :p_literal
+          value_type, literal_extra = :p_type, :p_literal
         when :object
-          value_type, position, literal_extra = :o_type, :object, :o_literal
+          value_type, literal_extra = :o_type, :o_literal
         when :graph_name
-          value_type, position, literal_extra = :c_type, :context, :c_literal
+          value_type, literal_extra = :c_type, :c_literal
         end
 
-        case pattern
+        h = case pattern
         when RDF::Query::Variable, Symbol
           # Returns anything other than the default context
-          pos, type = nil, {"$ne" => :default}
+          { place_in_statement => nil, value_type => {"$ne" => :default} }
         when false
           # Used for the default context
-          pos, type = false, :default
-        when nil # FIXME: shouldn't return anything
+          { place_in_statement => false, value_type => :default}
         else
           return self.entity_to_mongo(pattern, place_in_statement)
         end
 
-        h = { position => pos, value_type => type }
         h.select { |_, value| !value.nil? }
       end
 
@@ -103,21 +93,6 @@ module RDF
       end
 
       ##
-      # Creates a BSON representation of the statement.
-      # @return [Hash]
-      def self.statement_to_mongo(statement)
-        statement.to_hash.inject({}) do |hash, (place_in_statement, entity)|
-          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(entity, place_in_statement))
-        end
-      end
-
-      def self.pattern_to_mongo(pattern)
-        pattern.to_hash.inject({}) do |hash, (place_in_statement, entity)|
-          hash.merge(RDF::Mongo::Conversion.p_to_mongo(entity, place_in_statement))
-        end
-      end
-
-      ##
       # Create BSON for a statement representation. Note that if the statement has no graph name,
       # a value of `false` will be used to indicate the default context
       #
@@ -128,7 +103,26 @@ module RDF
           subject:    RDF::Mongo::Conversion.from_mongo(statement['subject'],   statement['s_type'], statement['s_literal']),
           predicate:  RDF::Mongo::Conversion.from_mongo(statement['predicate'], statement['p_type'], statement['p_literal']),
           object:     RDF::Mongo::Conversion.from_mongo(statement['object'],    statement['o_type'], statement['o_literal']),
-          graph_name: RDF::Mongo::Conversion.from_mongo(statement['context'],   statement['c_type'], statement['c_literal']))
+          graph_name: RDF::Mongo::Conversion.from_mongo(statement['graph_name'],   statement['c_type'], statement['c_literal']))
+      end
+
+      ##
+      # Creates a BSON representation of the statement.
+      # @return [Hash]
+      def self.statement_to_mongo(statement)
+        h = statement.to_hash.inject({}) do |hash, (place_in_statement, entity)|
+          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(entity, place_in_statement))
+        end
+        h[:c_type] ||= :default # Indicate statement is in the default graph
+        h
+      end
+
+      def self.pattern_to_mongo(pattern)
+        h = pattern.to_hash.inject({}) do |hash, (place_in_statement, entity)|
+          hash.merge(RDF::Mongo::Conversion.p_to_mongo(entity, place_in_statement))
+        end
+        h.merge!(graph_name: nil, c_type: :default) if pattern.graph_name == false # TODO: refactor this into #pattern_to_mongo
+        h
       end
     end
   end
