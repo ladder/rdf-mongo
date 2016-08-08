@@ -27,7 +27,7 @@ module RDF
             extra = "#{pos}l".to_sym
             { pos => entity.value, type => :type, extra => entity.datatype.to_s }
           else
-            { pos => entity.value, type => :literal }
+            { pos => entity.value }
           end
         else
           {}
@@ -51,7 +51,7 @@ module RDF
           { type => {"$ne" => :default} }
         when false
           # Used for the default context
-          { pos => false, type => :default}
+          { type => :default}
         else
           return self.entity_to_mongo(position, pattern)
         end
@@ -69,13 +69,13 @@ module RDF
           RDF::Literal.new(value, language: extra.to_sym)
         when :type
           RDF::Literal.new(value, datatype: RDF::URI.intern(extra))
-        when :literal
-          RDF::Literal.new(value)
         when :node
           @nodes ||= {}
           @nodes[value] ||= RDF::Node.new(value)
         when :default
           nil # The default context returns as nil, although it's queried as false.
+        else
+          RDF::Literal.new(value)
         end
       end
 
@@ -108,7 +108,7 @@ module RDF
         h = pattern.to_hash.inject({}) do |hash, (position, entity)|
           hash.merge(RDF::Mongo::Conversion.p_to_mongo(position, entity))
         end
-        h.merge!(g: nil, gt: :default) if pattern.graph_name == false
+        h.merge!(gt: :default) if pattern.graph_name == false
         h
       end
     end
