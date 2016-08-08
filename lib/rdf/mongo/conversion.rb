@@ -37,15 +37,6 @@ module RDF
           else
             pos, type, ll = entity.value, :literal, nil
           end
-
-        # ===== query patterns for named graphs
-        when RDF::Query::Variable, Symbol
-          # Returns anything other than the default context
-          pos, type = nil, {"$ne" => :default}
-        when false
-          # Used for the default context
-          pos, type = false, :default
-        # =====
         end
 =begin
         when nil # FIXME: shouldn't return anything
@@ -59,6 +50,34 @@ module RDF
 
         h = { position => pos, value_type => type, literal_extra => ll }
         h.delete_if {|kk,_| h[kk].nil?}
+      end
+
+      def self.p_to_mongo(pattern, place_in_statement)
+        case place_in_statement
+        when :subject
+          value_type, position, literal_extra = :s_type, :subject, :s_literal
+        when :predicate
+          value_type, position, literal_extra = :p_type, :predicate, :p_literal
+        when :object
+          value_type, position, literal_extra = :o_type, :object, :o_literal
+        when :graph_name
+          value_type, position, literal_extra = :c_type, :context, :c_literal
+        end
+
+        case pattern
+        when RDF::Query::Variable, Symbol
+          # Returns anything other than the default context
+          pos, type = nil, {"$ne" => :default}
+        when false
+          # Used for the default context
+          pos, type = false, :default
+        when nil # FIXME: shouldn't return anything
+        else
+          return self.entity_to_mongo(pattern, place_in_statement)
+        end
+
+        h = { position => pos, value_type => type }
+        h.select { |_, value| !value.nil? }
       end
 
       ##
@@ -94,7 +113,7 @@ module RDF
 
       def self.pattern_to_mongo(pattern)
         pattern.to_hash.inject({}) do |hash, (place_in_statement, entity)|
-          hash.merge(RDF::Mongo::Conversion.to_mongo(entity, place_in_statement))
+          hash.merge(RDF::Mongo::Conversion.p_to_mongo(entity, place_in_statement))
         end
       end
 

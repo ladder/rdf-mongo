@@ -144,7 +144,7 @@ module RDF
       # @private
       # @see RDF::Enumerable#has_graph?
       def has_graph?(value)
-        @collection.find(RDF::Mongo::Conversion.to_mongo(value, :graph_name)).count > 0
+        @collection.find(RDF::Mongo::Conversion.p_to_mongo(value, :graph_name)).count > 0
       end
 
       protected
