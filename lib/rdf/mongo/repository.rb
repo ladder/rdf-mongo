@@ -158,8 +158,8 @@ module RDF
         @nodes = {} # reset cache. FIXME this should probably be in Node.intern
 
         # A pattern graph_name of `false` is used to indicate the default graph
-        pm = RDF::Mongo::Conversion.statement_to_mongo(pattern)
-        pm.merge!(context: nil, c_type: :default) if pattern.graph_name == false # TODO: refactor this into #statement_to_mongo
+        pm = RDF::Mongo::Conversion.pattern_to_mongo(pattern)
+        pm.merge!(context: nil, c_type: :default) if pattern.graph_name == false # TODO: refactor this into #pattern_to_mongo
 
         @collection.find(pm).each do |document|
           block.call(RDF::Mongo::Conversion.statement_from_mongo(document))

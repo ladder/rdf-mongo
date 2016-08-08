@@ -1,3 +1,4 @@
+require 'pry'
 module RDF
   module Mongo
     class Conversion
@@ -11,7 +12,7 @@ module RDF
       # @param [:subject, :predicate, :object, :graph_name] place_in_statement
       #   Position within statement.
       # @return [Hash] BSON representation of the statement
-      def self.to_mongo(value, place_in_statement)
+      def self.entity_to_mongo(entity, place_in_statement)
         case place_in_statement
         when :subject
           value_type, position, literal_extra = :s_type, :subject, :s_literal
@@ -23,18 +24,18 @@ module RDF
           value_type, position, literal_extra = :c_type, :context, :c_literal
         end
 
-        case value
+        case entity
         when RDF::URI
-          pos, type = value.to_s, :uri
+          pos, type = entity.to_s, :uri
         when RDF::Node
-          pos, type = value.id.to_s, :node
+          pos, type = entity.id.to_s, :node
         when RDF::Literal
-          if value.has_language?
-            pos, type, ll = value.value, :literal_lang, value.language.to_s
-          elsif value.has_datatype?
-            pos, type, ll = value.value, :literal_type, value.datatype.to_s
+          if entity.has_language?
+            pos, type, ll = entity.value, :literal_lang, entity.language.to_s
+          elsif entity.has_datatype?
+            pos, type, ll = entity.value, :literal_type, entity.datatype.to_s
           else
-            pos, type, ll = value.value, :literal, nil
+            pos, type, ll = entity.value, :literal, nil
           end
 
         # ===== query patterns for named graphs
@@ -50,7 +51,7 @@ module RDF
         when nil # FIXME: shouldn't return anything
           pos, type = nil, nil
         else # FIXME: we should never get here
-          pos, type = value.to_s, :uri
+          pos, type = entity.to_s, :uri
         end
         pos = nil if pos == ''
         # =====
@@ -87,6 +88,12 @@ module RDF
       # @return [Hash]
       def self.statement_to_mongo(statement)
         statement.to_hash.inject({}) do |hash, (place_in_statement, entity)|
+          hash.merge(RDF::Mongo::Conversion.entity_to_mongo(entity, place_in_statement))
+        end
+      end
+
+      def self.pattern_to_mongo(pattern)
+        pattern.to_hash.inject({}) do |hash, (place_in_statement, entity)|
           hash.merge(RDF::Mongo::Conversion.to_mongo(entity, place_in_statement))
         end
       end
