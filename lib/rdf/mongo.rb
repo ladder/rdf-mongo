@@ -21,10 +21,10 @@ module RDF
     # @return [Hash] Generated BSON representation of statement.
     def self.from_mongo(statement)
       RDF::Statement.new(
-        subject:    RDF::Mongo::Conversion.from_mongo(statement['s'], statement['st'], statement['sl']),
-        predicate:  RDF::Mongo::Conversion.from_mongo(statement['p'], statement['pt'], statement['pl']),
-        object:     RDF::Mongo::Conversion.from_mongo(statement['o'], statement['ot'], statement['ol']),
-        graph_name: RDF::Mongo::Conversion.from_mongo(statement['c'], statement['ct'], statement['cl']))
+        subject:    RDF::Mongo::Conversion.from_mongo(statement['subject'],   statement['s_type'], statement['s_literal']),
+        predicate:  RDF::Mongo::Conversion.from_mongo(statement['predicate'], statement['p_type'], statement['p_literal']),
+        object:     RDF::Mongo::Conversion.from_mongo(statement['object'],    statement['o_type'], statement['o_literal']),
+        graph_name: RDF::Mongo::Conversion.from_mongo(statement['context'],   statement['c_type'], statement['c_literal']))
     end
   end
 
@@ -43,43 +43,51 @@ module RDF
       #   Position within statement.
       # @return [Hash] BSON representation of the statement
       def self.to_mongo(value, place_in_statement)
-        case value
-        when RDF::URI
-          v, k = value.to_s, :u
-        when RDF::Literal
-          if value.has_language?
-            v, k, ll = value.value, :ll, value.language.to_s
-          elsif value.has_datatype?
-            v, k, ll = value.value, :lt, value.datatype.to_s
-          else
-            v, k, ll = value.value, :l, nil
-          end
-        when RDF::Node
-          v, k = value.id.to_s, :n
-        when RDF::Query::Variable, Symbol
-          # Returns anything other than the default context
-          v, k = nil, {"$ne" => :default}
-        when false
-          # Used for the default context
-          v, k = false, :default
-        when nil
-          v, k = nil, nil
-        else
-          v, k = value.to_s, :u
-        end
-        v = nil if v == ''
-
         case place_in_statement
         when :subject
-          t, k1, lt = :st, :s, :sl
+          value_type, position, literal_extra = :s_type, :subject, :s_literal
         when :predicate
-          t, k1, lt = :pt, :p, :pl
+          value_type, position, literal_extra = :p_type, :predicate, :p_literal
         when :object
-          t, k1, lt = :ot, :o, :ol
+          value_type, position, literal_extra = :o_type, :object, :o_literal
         when :graph_name
-          t, k1, lt = :ct, :c, :cl
+          value_type, position, literal_extra = :c_type, :context, :c_literal
         end
-        h = {k1 => v, t => k, lt => ll}
+
+        case value
+        when RDF::URI
+          pos, type = value.to_s, :uri
+        when RDF::Node
+          pos, type = value.id.to_s, :node
+        when RDF::Literal
+          if value.has_language?
+            pos, type, ll = value.value, :literal_lang, value.language.to_s
+          elsif value.has_datatype?
+            pos, type, ll = value.value, :literal_type, value.datatype.to_s
+          else
+            pos, type, ll = value.value, :literal, nil
+          end
+
+        # ===== query patterns for named graphs
+        when RDF::Query::Variable, Symbol
+          # Returns anything other than the default context
+          pos, type = nil, {"$ne" => :default}
+        when false
+          # Used for the default context
+          pos, type = false, :default
+        # =====
+        end
+=begin
+        when nil # FIXME: shouldn't return anything
+          pos, type = nil, nil
+        else # FIXME: we should never get here
+          pos, type = value.to_s, :uri
+        end
+        pos = nil if pos == ''
+        # =====
+=end
+
+        h = { position => pos, value_type => type, literal_extra => ll }
         h.delete_if {|kk,_| h[kk].nil?}
       end
 
@@ -87,17 +95,17 @@ module RDF
       # Translate an BSON positional reference to an RDF Value.
       #
       # @return [RDF::Value]
-      def self.from_mongo(value, value_type = :u, literal_extra = nil)
-        case value_type
-        when :u
+      def self.from_mongo(value, type = :uri, literal_extra = nil)
+        case type
+        when :uri
           RDF::URI.intern(value)
-        when :ll
+        when :literal_lang
           RDF::Literal.new(value, language: literal_extra.to_sym)
-        when :lt
+        when :literal_type
           RDF::Literal.new(value, datatype: RDF::URI.intern(literal_extra))
-        when :l
+        when :literal
           RDF::Literal.new(value)
-        when :n
+        when :node
           @nodes ||= {}
           @nodes[value] ||= RDF::Node.new(value)
         when :default
@@ -157,11 +165,11 @@ module RDF
 
         @collection = @client[options.delete(:collection) || 'quads']
         @collection.indexes.create_many([
-          {key: {s: 1}},
-          {key: {p: 1}},
-          {key: {o: "hashed"}},
-          {key: {c: 1}},
-          {key: {s: 1, p: 1}},
+          {key: {statement: 1}},
+          {key: {predicate: 1}},
+          {key: {object: "hashed"}},
+          {key: {context: 1}},
+          {key: {statement: 1, predicate: 1}},
           #{key: {s: 1, o: "hashed"}}, # Muti-key hashed indexes not allowed
           #{key: {p: 1, o: "hashed"}}, # Muti-key hashed indexes not allowed
         ])
@@ -189,7 +197,7 @@ module RDF
           ops << { update_one: { filter: statement_to_insert(i), update: statement_to_insert(i), upsert: true} }
         end
 
-        # Only used an ordered write if we have both deletes and inserts
+        # Only use an ordered write if we have both deletes and inserts
         ordered = ! (changeset.inserts.empty? or changeset.deletes.empty?)
         @collection.bulk_write(ops, ordered: ordered)
       end
@@ -265,7 +273,7 @@ module RDF
 
         # A pattern graph_name of `false` is used to indicate the default graph
         pm = pattern.to_mongo
-        pm.merge!(c: nil, ct: :default) if pattern.graph_name == false
+        pm.merge!(context: nil, c_type: :default) if pattern.graph_name == false
         #puts "query using #{pm.inspect}"
         @collection.find(pm).each do |document|
           block.call(RDF::Statement.from_mongo(document))
@@ -282,14 +290,14 @@ module RDF
         def statement_to_insert(statement)
           raise ArgumentError, "Statement #{statement.inspect} is incomplete" if statement.incomplete?
           st_mongo = statement.to_mongo
-          st_mongo[:ct] ||= :default # Indicate statement is in the default graph
+          st_mongo[:c_type] ||= :default # Indicate statement is in the default graph
           #puts "insert statement: #{st_mongo.inspect}"
           st_mongo
         end
 
         def statement_to_delete(statement)
           st_mongo = statement.to_mongo
-          st_mongo[:ct] = :default if statement.graph_name.nil?
+          st_mongo[:c_type] = :default if statement.graph_name.nil?
           st_mongo
         end
     end
