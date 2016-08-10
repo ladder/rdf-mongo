@@ -56,8 +56,10 @@ module RDF
           {key: {o: "hashed"}},
           {key: {g: "hashed"}},
           {key: {s: 1, p: 1, o: 1, g: 1}},
-          {key: {st: 1, pt: 1, ot: 1, gt: 1}},
-          {key: {sl: 1, pl: 1, ol: 1, gl: 1}},
+          {key: {st: "hashed"}},
+          {key: {ot: "hashed"}},
+          {key: {gt: "hashed"}},
+          {key: {ol: "hashed"}},
         ])
         super(options, &block)
       end

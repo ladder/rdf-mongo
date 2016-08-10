@@ -86,10 +86,10 @@ module RDF
       # @return [Hash] Generated BSON representation of statement.
       def self.statement_from_mongo(document)
         RDF::Statement.new(
-          subject:    RDF::Mongo::Conversion.from_mongo(document['s'], document['st'], document['sl']),
-          predicate:  RDF::Mongo::Conversion.from_mongo(document['p'], document['pt'], document['pl']),
+          subject:    RDF::Mongo::Conversion.from_mongo(document['s'], document['st'], nil),
+          predicate:  RDF::Mongo::Conversion.from_mongo(document['p'], :uri, nil),
           object:     RDF::Mongo::Conversion.from_mongo(document['o'], document['ot'], document['ol']),
-          graph_name: RDF::Mongo::Conversion.from_mongo(document['g'], document['gt'], document['gl']))
+          graph_name: RDF::Mongo::Conversion.from_mongo(document['g'], document['gt'], nil))
       end
 
       ##
@@ -100,6 +100,7 @@ module RDF
           hash.merge(RDF::Mongo::Conversion.entity_to_mongo(position, entity))
         end
         h[:gt] ||= :default # Indicate statement is in the default graph
+        h.delete(:pt) # Predicate is always a RDF::URI
         h
       end
 
@@ -108,6 +109,7 @@ module RDF
           hash.merge(RDF::Mongo::Conversion.p_to_mongo(position, entity))
         end
         h.merge!(gt: :default) if pattern.graph_name == false
+        h.delete(:pt) # Predicate is always a RDF::URI
         h
       end
     end
